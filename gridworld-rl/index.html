@@ -1179,20 +1179,24 @@
                 const path = extractPolicy(data.Q);
                 if (path.reachedGoal) {
                     // Calculate convergence episode (when steps stabilized)
-                    const convergenceInfo = findConvergenceEpisode(data.stepsPerEpisode);
-                    bestAlgo = { 
-                        name: algoName, 
-                        path: path.path, 
-                        steps: path.steps, 
-                        convergenceEpisode: convergenceInfo.episode,
-                        avgSteps: convergenceInfo.avgSteps
-                    };
-                    break; // Just take the first converged algorithm
+                    const convergenceInfo = findConvergenceEpisode(data.stepsPerEpisode, path.steps);
+                    
+                    // Only show if truly converged
+                    if (convergenceInfo.converged) {
+                        bestAlgo = { 
+                            name: algoName, 
+                            path: path.path, 
+                            steps: path.steps, 
+                            convergenceEpisode: convergenceInfo.episode,
+                            avgSteps: convergenceInfo.avgSteps
+                        };
+                        break; // Just take the first converged algorithm
+                    }
                 }
             }
 
             if (!bestAlgo) {
-                alert('None of the algorithms converged to a solution. Try:\n- Increasing episodes\n- Adjusting hyperparameters\n- Simplifying the environment');
+                alert('None of the algorithms have converged to an optimal solution yet.\n\nConvergence requires:\n- Reaching the goal consistently\n- Path length near optimal (shortest path)\n- Stable performance over last 10 episodes\n\nTry:\n- Increasing episodes\n- Adjusting hyperparameters\n- Simplifying the environment');
                 return;
             }
 
@@ -1200,26 +1204,51 @@
             displayPathSimulation(bestAlgo);
         }
 
-        function findConvergenceEpisode(stepsPerEpisode) {
-            // Find when the algorithm converged (steps became stable and low)
-            const windowSize = 50;
-            const threshold = 10; // variance threshold (relaxed)
+        function findConvergenceEpisode(stepsPerEpisode, optimalPathLength) {
+            // Convergence criteria: path length is stable and near optimal for last 10 episodes
+            const windowSize = 10;
+            const varianceThreshold = 2; // Very low variance required
+            const optimalThreshold = optimalPathLength + 3; // Within 3 steps of optimal
             
-            for (let i = windowSize; i < stepsPerEpisode.length; i++) {
-                const window = stepsPerEpisode.slice(i - windowSize, i);
-                const avg = window.reduce((a, b) => a + b, 0) / windowSize;
-                const variance = window.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / windowSize;
+            // Check if last 10 episodes are converged
+            if (stepsPerEpisode.length >= windowSize) {
+                const lastWindow = stepsPerEpisode.slice(-windowSize);
+                const avg = lastWindow.reduce((a, b) => a + b, 0) / windowSize;
+                const variance = lastWindow.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / windowSize;
                 
-                // Check if converged (low variance and reasonable average)
-                if (variance < threshold && avg < 50) {
-                    return { episode: i, avgSteps: Math.round(avg * 10) / 10 };
+                // Check if converged: low variance AND near optimal path length
+                if (variance < varianceThreshold && avg <= optimalThreshold) {
+                    // Find when it first converged
+                    for (let i = windowSize; i < stepsPerEpisode.length; i++) {
+                        const window = stepsPerEpisode.slice(i - windowSize, i);
+                        const windowAvg = window.reduce((a, b) => a + b, 0) / windowSize;
+                        const windowVar = window.reduce((sum, val) => sum + Math.pow(val - windowAvg, 2), 0) / windowSize;
+                        
+                        if (windowVar < varianceThreshold && windowAvg <= optimalThreshold) {
+                            return { 
+                                converged: true, 
+                                episode: i, 
+                                avgSteps: Math.round(windowAvg * 10) / 10 
+                            };
+                        }
+                    }
+                    // If we reach here, it converged but only in the last episodes
+                    return { 
+                        converged: true, 
+                        episode: stepsPerEpisode.length, 
+                        avgSteps: Math.round(avg * 10) / 10 
+                    };
                 }
             }
             
-            // If not converged, return last 100 episodes average
-            const lastWindow = stepsPerEpisode.slice(-100);
+            // Not converged
+            const lastWindow = stepsPerEpisode.slice(-Math.min(10, stepsPerEpisode.length));
             const avgSteps = lastWindow.reduce((a, b) => a + b, 0) / lastWindow.length;
-            return { episode: stepsPerEpisode.length, avgSteps: Math.round(avgSteps * 10) / 10 };
+            return { 
+                converged: false, 
+                episode: null, 
+                avgSteps: Math.round(avgSteps * 10) / 10 
+            };
         }
 
         function extractPolicy(Q) {
@@ -1644,17 +1673,29 @@
                 const avgFinal = finalSteps.reduce((a, b) => a + b, 0) / finalSteps.length;
                 const minSteps = Math.min(...steps);
                 
-                // Calculate convergence episode
-                const convergenceInfo = findConvergenceEpisode(steps);
+                // Extract policy to get optimal path length
+                const path = extractPolicy(data.Q);
+                const optimalPathLength = path.reachedGoal ? path.steps : minSteps;
+                
+                // Calculate convergence with optimal path length
+                const convergenceInfo = findConvergenceEpisode(steps, optimalPathLength);
                 
                 const card = document.createElement('div');
                 card.className = 'stat-card';
+                
+                let convergenceText = '';
+                if (convergenceInfo.converged) {
+                    convergenceText = `<p style="color: #10b981; margin-top: 8px; font-size: 0.9em; font-weight: 600;">✓ Converged at Episode: ${convergenceInfo.episode}</p>`;
+                } else {
+                    convergenceText = `<p style="color: #ef4444; margin-top: 8px; font-size: 0.9em; font-weight: 600;">✗ Not Converged</p>`;
+                }
+                
                 card.innerHTML = `
                     <h3>${name}</h3>
                     <div class="value">${avgFinal.toFixed(1)}</div>
                     <p style="color: #666; margin-top: 8px;">Avg. Steps (Last 10 Episodes)</p>
                     <p style="color: #666; margin-top: 4px; font-size: 0.9em;">Best: ${minSteps} steps</p>
-                    <p style="color: #4a90e2; margin-top: 8px; font-size: 0.9em; font-weight: 600;">Converged at Episode: ${convergenceInfo.episode}</p>
+                    ${convergenceText}
                 `;
                 statsDiv.appendChild(card);
             }
