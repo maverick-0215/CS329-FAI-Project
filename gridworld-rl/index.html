@@ -784,11 +784,21 @@
 
                 <h3>Hyperparameters</h3>
                 <ul>
-                    <li><strong>Learning Rate (α):</strong> Controls step size for value updates. Range: 0-1. Typical: 0.1</li>
-                    <li><strong>Discount Factor (γ):</strong> Determines importance of future rewards versus immediate rewards. Range: 0-1. Typical: 0.9</li>
-                    <li><strong>Episodes:</strong> Number of complete training trajectories from start to goal. Range: 100-10000. Typical: 1000-2000</li>
+                    <li><strong>Learning Rate (α):</strong> Controls step size for value updates. Must be in range (0, 1), typically 0.1. Values at extremes (0 or 1) will prevent learning.</li>
+                    <li><strong>Discount Factor (γ):</strong> Determines importance of future rewards versus immediate rewards. Range: [0, 1), typically 0.9. Value of 1 can cause instability.</li>
+                    <li><strong>Episodes:</strong> Number of complete training trajectories from start to goal. Range: 100-10000. Typical: 1000-2000.</li>
                 </ul>
-                <p style="margin-top: 10px; color: #666; font-style: italic;">Note: Exploration rate (ε) is fixed at 0.1 for ε-greedy action selection.</p>
+                <p style="margin-top: 10px; color: #666; font-style: italic;">Note: Exploration rate (ε) is fixed at 0.1 for ε-greedy action selection. Both α and γ cannot be set very high (> 0.95) simultaneously as this causes instability.</p>
+
+                <h3>What Does Convergence Mean?</h3>
+                <p>An algorithm is considered <strong>converged</strong> when it meets ALL of the following criteria:</p>
+                <ul>
+                    <li><strong>Finds the goal:</strong> Successfully reaches the goal state in each episode</li>
+                    <li><strong>Near-optimal path:</strong> Path length is within 3 steps of the shortest possible path</li>
+                    <li><strong>Stable performance:</strong> Low variance (< 2 steps²) over the last 10 episodes</li>
+                    <li><strong>Consistent behavior:</strong> Takes similar paths repeatedly without random exploration</li>
+                </ul>
+                <p style="margin-top: 10px;">If an algorithm shows "Did not converge", try increasing episodes, adjusting hyperparameters, or simplifying the environment by removing obstacles.</p>
 
                 <h3>Training and Results</h3>
                 <ol>
@@ -847,13 +857,14 @@
                     <p><strong>Type:</strong> Episode-based method</p>
                     <p><strong>Update Rule:</strong></p>
                     <div class="equation">
-                        Q(s,a) ← average of returns following first visits to (s,a)
+                        Q(s,a) ← Q(s,a) + α[G<sub>t</sub> - Q(s,a)]
                     </div>
+                    <p>Where G<sub>t</sub> is the return (sum of discounted rewards) from time t until episode end.</p>
                     <p><strong>Characteristics:</strong></p>
                     <ul>
                         <li>Learns from complete episodes (no bootstrapping)</li>
                         <li>Updates only after episode completion</li>
-                        <li>Uses sample average or incremental mean</li>
+                        <li>Uses actual returns G<sub>t</sub> = R<sub>t+1</sub> + γR<sub>t+2</sub> + γ²R<sub>t+3</sub> + ...</li>
                         <li>Unbiased estimate of true value function</li>
                         <li>May require more episodes to converge but stable</li>
                     </ul>
@@ -1301,48 +1312,7 @@
             // Reset grid
             renderGrid();
             
-            // Create info panel
-            const infoPanel = document.createElement('div');
-            infoPanel.id = 'pathInfo';
-            infoPanel.style.cssText = `
-                position: fixed;
-                top: 100px;
-                right: 30px;
-                background: white;
-                border: 2px solid #1a1a2e;
-                border-radius: 5px;
-                padding: 20px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-                z-index: 1500;
-                min-width: 280px;
-            `;
-            
-            const colors = {
-                'Q-Learning': '#3b82f6',
-                'SARSA': '#10b981',
-                'Monte Carlo': '#f59e0b'
-            };
-            
-            const color = colors[algoData.name];
-            
-            let infoHTML = '<h3 style="margin: 0 0 15px 0; color: #1a1a2e; font-size: 1.1em; border-bottom: 2px solid #1a1a2e; padding-bottom: 8px;">Best Learned Path</h3>';
-            
-            infoHTML += `
-                <div style="margin-bottom: 12px; padding: 10px; background: #f9f9f9; border-left: 4px solid ${color}; border-radius: 3px;">
-                    <strong style="color: ${color}; font-size: 1.05em;">${algoData.name}</strong><br>
-                    <div style="margin-top: 8px; line-height: 1.6;">
-                        <span style="font-size: 0.9em; color: #666;">📊 Optimal Path Steps: <strong>${algoData.steps}</strong></span><br>
-                        <span style="font-size: 0.9em; color: #666;">📈 Converged at Episode: <strong>${algoData.convergenceEpisode}</strong></span><br>
-                        <span style="font-size: 0.9em; color: #666;">⚡ Avg Steps (Last 50): <strong>${algoData.avgSteps}</strong></span>
-                    </div>
-                </div>
-            `;
-            
-            infoHTML += '<button onclick="stopSimulation()" style="width: 100%; padding: 10px; background: #1a1a2e; color: white; border: none; border-radius: 3px; cursor: pointer; margin-top: 10px; font-family: \'Times New Roman\', serif;">Close</button>';
-            infoPanel.innerHTML = infoHTML;
-            document.body.appendChild(infoPanel);
-            
-            // Animate path
+            // Animate path directly without popup
             isSimulating = true;
             animatePath(algoData);
         }
@@ -1381,11 +1351,6 @@
             isSimulating = false;
             if (simulationInterval) {
                 clearInterval(simulationInterval);
-            }
-            
-            const infoPanel = document.getElementById('pathInfo');
-            if (infoPanel) {
-                infoPanel.remove();
             }
             
             renderGrid();
@@ -1526,6 +1491,20 @@
             const gamma = parseFloat(document.getElementById('gamma').value);
             const epsilon = 0.1; // Fixed exploration rate for optimal balance
             const episodes = parseInt(document.getElementById('episodes').value);
+            
+            // Validate hyperparameters
+            if (alpha <= 0 || alpha >= 1) {
+                alert('Learning Rate (α) must be between 0 and 1 (exclusive).\nTypical value: 0.1');
+                return;
+            }
+            if (gamma < 0 || gamma >= 1) {
+                alert('Discount Factor (γ) must be between 0 and 1 (exclusive for 1).\nTypical value: 0.9');
+                return;
+            }
+            if (alpha > 0.95 && gamma > 0.95) {
+                alert('Both Learning Rate and Discount Factor cannot be very high (> 0.95) simultaneously.\nThis causes training instability.');
+                return;
+            }
             
             // Show loading
             document.getElementById('loadingMessage').style.display = 'block';
@@ -1677,9 +1656,23 @@
             
             for (const [name, data] of Object.entries(trainingResults)) {
                 const steps = data.stepsPerEpisode;
-                const finalSteps = steps.slice(-10);
-                const avgFinal = finalSteps.reduce((a, b) => a + b, 0) / finalSteps.length;
-                const minSteps = Math.min(...steps);
+                
+                // Run a test episode using the learned policy (greedy, no exploration)
+                const env = new GridEnvironment(gridSize, rocks, start, goal);
+                let testState = env.reset();
+                let testSteps = 0;
+                let testDone = false;
+                const maxTestSteps = 200;
+                
+                while (!testDone && testSteps < maxTestSteps) {
+                    const stateKey = env.stateKey(testState);
+                    const qValues = data.Q[stateKey];
+                    const action = qValues.indexOf(Math.max(...qValues)); // Greedy action
+                    const { nextState, done } = env.step(action);
+                    testState = nextState;
+                    testDone = done;
+                    testSteps++;
+                }
                 
                 // Extract policy to get optimal path length
                 const path = extractPolicy(data.Q);
@@ -1700,11 +1693,14 @@
                     convergenceText = `<p style="color: #ef4444; margin-top: 8px; font-size: 0.9em; font-weight: 600;">✗ Did not converge with current settings</p>`;
                 }
                 
+                // Display test episode steps (greedy policy)
+                const testResultText = testDone ? testSteps : '200+ (Failed)';
+                
                 card.innerHTML = `
                     <h3>${name}</h3>
-                    <div class="value">${avgFinal.toFixed(1)}</div>
-                    <p style="color: #666; margin-top: 8px;">Avg. Steps (Last 10 Episodes)</p>
-                    <p style="color: #666; margin-top: 4px; font-size: 0.9em;">Best: ${minSteps} steps</p>
+                    <div class="value">${testResultText}</div>
+                    <p style="color: #666; margin-top: 8px;">Test Episode Steps (Greedy Policy)</p>
+                    <p style="color: #666; margin-top: 4px; font-size: 0.9em;">Optimal Path: ${path.reachedGoal ? path.steps + ' steps' : 'No path found'}</p>
                     ${convergenceText}
                 `;
                 statsDiv.appendChild(card);
