@@ -7,7 +7,7 @@ An interactive web-based reinforcement learning simulator implementing classical
 
 ## Webpage
 
-[https://maverick-0215.github.io/Learning-Grid-Game-via-RL/](https://maverick-0215.github.io/CS329-FAI-Project/)
+[webpage link](https://maverick-0215.github.io/CS329-FAI-Project/)
 
 ## Overview
 
