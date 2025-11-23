@@ -3,7 +3,7 @@
 **CS329 - Foundations of Artificial Intelligence**  
 **Course Project**
 
-An interactive web-based reinforcement learning simulator implementing classical RL algorithms on a gridworld environment.
+An interactive web-based reinforcement learning simulator implementing classical RL algorithms in games.
 
 ## Webpage
 
